@@ -18,3 +18,4 @@ class RunEntry(BaseModel):
     result: dict | None
     failure: str | None
     digest: str | None
+    evidence_state: str

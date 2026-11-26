@@ -35,7 +35,7 @@ async function refresh() {
       overview: () => overview(config),
       cases: () => casesPage(config, user, route),
       runs: () => runsPage(config, route, token.signal),
-      evidence: () => evidencePage(config, user, route),
+      evidence: () => evidencePage(config, user, route, token.signal),
     };
     const page = await pages[route.name]();
     if (!token.signal.aborted) {

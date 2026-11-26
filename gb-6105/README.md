@@ -41,6 +41,27 @@ docker compose up -d --build --wait
 
 选用「YT-1124-东梯检」对应的演示资料，保存一份复演资料，再以默认参数 2 提交。worker 保存结果摘要、业务明细和 SHA-256。复核员登录后在「检证与桶证据」签署。
 
+## 桶证据完整性与修复恢复
+
+已签批次的桶证据（桶记录 + 检证结论）有时会缺行。批次完成时 worker 会冻结一份**同批留存件**（`evidence_snapshots`），并以结果规范化 JSON 的 SHA-256 作为**原摘要**（`runs.digest`）。
+
+- **读取即核对**：打开检证页或导出时，按原摘要实时核对当前桶证据。对不上就把该批标为「待修·暂停下载」，只停当前批次，其他批次照常下载。导出接口在核验未过时返回 409。
+- **两路恢复**：
+  - **同批留存件**：取回冻结的完整证据，同步比对原摘要，桶记录和结论都验过才恢复，通过即重新开放下载。
+  - **原始卷宗重放**：按原卷宗与原参数由 worker 异步重放并按原摘要核验，通过后开放。重放有模拟耗时，便于演示两路并发。
+- **并发口径**：两路同时发起时，留存件先核验通过即可恢复下载，即使原始卷宗还在重放；后完成的重放照常登记，但不回滚已开放的下载。
+- **幂等与留痕**：同一批次同一来源的修复只登记一次（`(run_id, source)` 唯一约束），后到的修复件和重试都不重复登记。恢复只更新证据状态与证据内容，**原签核和原摘要照旧**。修复登记全程写审计。
+
+证据状态独立于执行状态：`intact`（证据完整）/ `repairing`（待修，暂停下载）/ `repaired`（已恢复）。修复登记状态：`replaying` / `verified` / `rejected`。
+
+| 接口 | 方法 | 角色 | 说明 |
+|---|---|---|---|
+| `/runs/{id}/evidence` | GET | 登录用户 | 证据状态、是否可下载、修复登记 |
+| `/runs/{id}/evidence/snapshot` | GET | 登录用户 | 取回同批留存件 |
+| `/runs/{id}/evidence/gap` | POST | 资料操作员 | 演示用：制造桶证据缺行 |
+| `/runs/{id}/evidence/repairs/retained` | POST | 资料操作员 | 用同批留存件恢复 |
+| `/runs/{id}/evidence/repairs/replay` | POST | 资料操作员 | 发起原始卷宗重放 |
+
 ## 开发说明
 
 | 部分 | 实现 |
@@ -58,6 +79,14 @@ docker compose up -d --build --wait
 
 ## 验收范围
 
-在内存计算目录，容量与最大深度可复核。卷宗和证据由 PostgreSQL 持久化。 当前界面用 JSON 编辑业务资料，以 JSON 下载证据。过程和截图保存在批次的 [验收记录](../../test-artifacts/gb-6105/TESTING.md)。
+在内存计算目录，容量与最大深度可复核。卷宗和证据由 PostgreSQL 持久化。 当前界面用 JSON 编辑业务资料，以 JSON 下载证据。表结构经 `migrations/v001_workbench.py` 与 `migrations/v002_evidence_repair.py` 声明式升级，v002 对旧库增量补列、补表且可重复执行。后端测试（SQLite 内存库，无需 Docker）：
+
+```sh
+cd backend
+PYTHONPATH=. python3 tests/test_evidence_repair.py   # 缺行/两路恢复/并发/幂等领域流程
+SEED_DEMO=false PYTHONPATH=. python3 tests/test_evidence_api.py  # 路由、下载门禁与权限
+```
+
+过程和截图保存在批次的 [验收记录](../../test-artifacts/gb-6105/TESTING.md)。
 
 [MIT License](LICENSE)

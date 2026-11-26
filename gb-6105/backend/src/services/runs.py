@@ -7,7 +7,7 @@ from src.constants.job_state import JobState
 from src.domain.scenario import CONFIG
 from src.models.cases import cases
 from src.models.runs import runs
-from . import audit, cases as case_service
+from . import audit, cases as case_service, evidence
 
 
 def query():
@@ -18,7 +18,10 @@ def get(db, run_id):
     run = db.execute(query().where(runs.c.id == run_id)).mappings().first()
     if run is None:
         raise HTTPException(404, "执行批次不存在")
-    return dict(run)
+    data = dict(run)
+    # 读取即核对：桶证据与原摘要对不上就标待修，只影响当前批次。
+    data["evidence_state"] = evidence.verify_run(db, run_id)
+    return data
 
 
 def list_entries(db):

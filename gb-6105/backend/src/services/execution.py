@@ -8,6 +8,7 @@ from src.constants.job_state import JobState
 from src.domain import scenario
 from src.models.cases import cases
 from src.models.runs import runs
+from src.services import evidence
 from src.services.audit import record
 from src.utils.serial import content_digest
 
@@ -58,3 +59,6 @@ def fail(job_failure):
 def finish(db, run_id, output):
     db.execute(update(runs).where(runs.c.id == run_id).values(**output, finished_at=int(time())))
     record(db, str(output["status"]), "worker", "run", run_id)
+    if output["status"] == JobState.DONE:
+        # 同批留存件：批次完成即冻结一份完整桶证据，供缺行后恢复。
+        evidence.save_snapshot(db, run_id, output["result"], output["digest"])
